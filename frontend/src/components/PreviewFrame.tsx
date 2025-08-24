@@ -82,7 +82,7 @@ export function PreviewFrame({ files, webContainer }: PreviewFrameProps) {
           className="border-0"
           title="Preview"
         />
-      </div>}
+      )}
     </div>
   );
 }
