@@ -8,8 +8,8 @@ import cors from "cors";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!); // Added non-null assertion
 const app = express();
-app.use(cors())
-app.use(express.json())
+app.use(cors());
+app.use(express.json());
 
 app.post("/template", async (req, res) => {
     const prompt = req.body.prompt;
@@ -33,7 +33,7 @@ app.post("/template", async (req, res) => {
         res.json({
             prompts: [BASE_PROMPT, `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
             uiPrompts: [reactBasePrompt]
-        })
+        });
         return;
     }
 
@@ -41,14 +41,14 @@ app.post("/template", async (req, res) => {
         res.json({
             prompts: [BASE_PROMPT, `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${nodeBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
             uiPrompts: [nodeBasePrompt]
-        })
+        });
         return;
     }
 
-    res.status(403).json({message: "You cant access this"})
+    res.status(403).json({message: "You cant access this"});
     return;
 
-})
+});
 
 app.post("/chat", async (req, res) => {
     const messages = req.body.messages;
@@ -93,12 +93,12 @@ app.post("/chat", async (req, res) => {
     res.json({
         response: response.text()
     });
-}));
+});
 
 app.use((err: any, req: any, res: any, next: any) => {
     console.error('Error:', err);
     res.status(500).json({ error: 'Internal server error', details: err.message });
-})
+});
 
 app.listen(3000, () => {
     console.log('Server running on http://localhost:3000');
