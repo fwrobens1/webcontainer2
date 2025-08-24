@@ -29,6 +29,7 @@ export function Builder() {
   const [llmMessages, setLlmMessages] = useState<{role: "user" | "assistant", content: string;}[]>([]);
   const [loading, setLoading] = useState(false);
   const [templateSet, setTemplateSet] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const webcontainer = useWebContainer();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -151,39 +152,60 @@ export function Builder() {
   }, [files, webcontainer]);
 
   async function init() {
-    const response = await axios.post(`${BACKEND_URL}/template`, {
-      prompt: prompt.trim()
-    });
-    setTemplateSet(true);
-    
-    const {prompts, uiPrompts} = response.data;
+    try {
+      setError(null);
+      console.log('Initializing with prompt:', prompt);
+      
+      const response = await axios.post(`${BACKEND_URL}/template`, {
+        prompt: prompt.trim()
+      });
+      
+      console.log('Template response:', response.data);
+      setTemplateSet(true);
+      
+      const {prompts, uiPrompts} = response.data;
 
-    setSteps(parseXml(uiPrompts[0]).map((x: Step) => ({
-      ...x,
-      status: "pending"
-    })));
+      if (uiPrompts && uiPrompts[0]) {
+        const initialSteps = parseXml(uiPrompts[0]);
+        console.log('Initial steps:', initialSteps);
+        setSteps(initialSteps.map((x: Step) => ({
+          ...x,
+          status: "pending"
+        })));
+      }
 
-    setLoading(true);
-    const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
-      messages: [...prompts, prompt].map(content => ({
-        role: "user",
+      setLoading(true);
+      const chatMessages = [...prompts, prompt].map(content => ({
+        role: "user" as const,
         content
-      }))
-    })
+      }));
+      
+      console.log('Sending chat messages:', chatMessages);
+      
+      const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
+        messages: chatMessages
+      });
 
-    setLoading(false);
+      console.log('Chat response:', stepsResponse.data);
+      setLoading(false);
 
-    setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
-      ...x,
-      status: "pending" as "pending"
-    }))]);
+      if (stepsResponse.data.response) {
+        const newSteps = parseXml(stepsResponse.data.response);
+        console.log('New steps:', newSteps);
+        
+        setSteps(s => [...s, ...newSteps.map(x => ({
+          ...x,
+          status: "pending" as "pending"
+        }))]);
 
-    setLlmMessages([...prompts, prompt].map(content => ({
-      role: "user",
-      content
-    })));
-
-    setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}])
+        setLlmMessages(chatMessages);
+        setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}]);
+      }
+    } catch (error) {
+      console.error('Error during initialization:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -215,33 +237,53 @@ export function Builder() {
                   {!(loading || !templateSet) && <div className='flex'>
                     <textarea value={userPrompt} onChange={(e) => {
                     setPrompt(e.target.value)
-                  }} className='p-2 w-full'></textarea>
+                  }} className='p-2 w-full' placeholder="Ask for changes or improvements..."></textarea>
                   <button onClick={async () => {
-                    const newMessage = {
-                      role: "user" as "user",
-                      content: userPrompt
-                    };
-
-                    setLoading(true);
-                    const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
-                      messages: [...llmMessages, newMessage]
-                    });
-                    setLoading(false);
-
-                    setLlmMessages(x => [...x, newMessage]);
-                    setLlmMessages(x => [...x, {
-                      role: "assistant",
-                      content: stepsResponse.data.response
-                    }]);
+                    if (!userPrompt.trim()) return;
                     
-                    setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
-                      ...x,
-                      status: "pending" as "pending"
-                    }))]);
+                    try {
+                      setError(null);
+                      const newMessage = {
+                        role: "user" as "user",
+                        content: userPrompt
+                      };
 
+                      setLoading(true);
+                      console.log('Sending follow-up message:', newMessage);
+                      
+                      const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
+                        messages: [...llmMessages, newMessage]
+                      });
+                      
+                      console.log('Follow-up response:', stepsResponse.data);
+                      setLoading(false);
+
+                      setLlmMessages(x => [...x, newMessage]);
+                      setLlmMessages(x => [...x, {
+                        role: "assistant",
+                        content: stepsResponse.data.response
+                      }]);
+                      
+                      const newSteps = parseXml(stepsResponse.data.response);
+                      setSteps(s => [...s, ...newSteps.map(x => ({
+                        ...x,
+                        status: "pending" as "pending"
+                      }))]);
+                      
+                      setPrompt(''); // Clear the input
+                    } catch (error) {
+                      console.error('Error sending message:', error);
+                      setError(error instanceof Error ? error.message : 'An error occurred');
+                      setLoading(false);
+                    }
                   }} className='bg-purple-400 px-4'>Send</button>
                   </div>}
                 </div>
+                {error && (
+                  <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+                    Error: {error}
+                  </div>
+                )}
               </div>
             </div>
           </div>

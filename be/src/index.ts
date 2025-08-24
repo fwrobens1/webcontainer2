@@ -39,7 +39,7 @@ app.post("/template", async (req, res) => {
 
     if (answer === "node") {
         res.json({
-            prompts: [`Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+            prompts: [BASE_PROMPT, `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${nodeBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
             uiPrompts: [nodeBasePrompt]
         })
         return;
@@ -88,11 +88,18 @@ app.post("/chat", async (req, res) => {
     const result = await chat.sendMessage(lastUserMessageText);
     const response = result.response;
 
-    console.log(response);
+    console.log("AI Response:", response.text());
 
     res.json({
         response: response.text()
     });
+}));
+
+app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal server error', details: err.message });
 })
 
-app.listen(3000);
+app.listen(3000, () => {
+    console.log('Server running on http://localhost:3000');
+});
