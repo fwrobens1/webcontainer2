@@ -1,26 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { StepsList } from '../components/StepsList';
-import { FileExplorer } from '../components/FileExplorer';
-import { TabView } from '../components/TabView';
-import { CodeEditor } from '../components/CodeEditor';
-import { PreviewFrame } from '../components/PreviewFrame';
+import { Sidebar } from '../components/Sidebar';
+import { ChatPanel } from '../components/ChatPanel';
+import { ModernFileExplorer } from '../components/ModernFileExplorer';
+import { ModernCodeEditor } from '../components/ModernCodeEditor';
+import { ModernPreview } from '../components/ModernPreview';
+import { StepsPanel } from '../components/StepsPanel';
 import { Step, FileItem, StepType } from '../types';
 import axios from 'axios';
 import { BACKEND_URL } from '../config';
 import { parseXml } from '../steps';
 import { useWebContainer } from '../hooks/useWebContainer';
-import { FileNode } from '@webcontainer/api';
-import { Loader } from '../components/Loader';
+import { Code, Eye } from 'lucide-react';
 
-const MOCK_FILE_CONTENT = `// This is a sample file content
-import React from 'react';
-
-function Component() {
-  return <div>Hello World</div>;
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 }
-
-export default Component;`;
 
 export function Builder() {
   const location = useLocation();
@@ -33,12 +31,26 @@ export function Builder() {
   const webcontainer = useWebContainer();
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [activeView, setActiveView] = useState<'chat' | 'files' | 'terminal'>('chat');
   const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   
   const [steps, setSteps] = useState<Step[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const [files, setFiles] = useState<FileItem[]>([]);
+
+  // Add initial message
+  useEffect(() => {
+    if (prompt) {
+      setMessages([{
+        id: '1',
+        role: 'user',
+        content: prompt,
+        timestamp: new Date()
+      }]);
+    }
+  }, [prompt]);
 
   useEffect(() => {
     let originalFiles = [...files];
@@ -200,6 +212,14 @@ export function Builder() {
 
         setLlmMessages(chatMessages);
         setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}]);
+        
+        // Add AI response to messages
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'I\'ve created a plan for your project. You can see the steps in the sidebar and files will appear as I build them.',
+          timestamp: new Date()
+        }]);
       }
     } catch (error) {
       console.error('Error during initialization:', error);
@@ -212,80 +232,145 @@ export function Builder() {
     init();
   }, [])
 
+  const handleSendMessage = async (message: string) => {
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => [...prev, newMessage]);
+    setPrompt(message);
+    // Trigger the existing logic for sending messages
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
-      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
-        <h1 className="text-xl font-semibold text-gray-100">Website Builder</h1>
-        <p className="text-sm text-gray-400 mt-1">Prompt: {prompt}</p>
-      </header>
+    <div className="min-h-screen bg-gray-950 flex">
+      {/* Sidebar */}
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
       
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full grid grid-cols-4 gap-6 p-6">
-          <div className="col-span-1 space-y-6 overflow-auto">
-            <div>
-              <div className="max-h-[75vh] overflow-scroll">
-                <StepsList
-                  steps={steps}
-                  currentStep={currentStep}
-                  onStepClick={setCurrentStep}
-                />
-              </div>
-              <div>
-                <div className='flex'>
-                  <br />
-                  {(loading || !templateSet) && <Loader />}
-                  {!(loading || !templateSet) && <div className='flex'>
-                    <textarea value={userPrompt} onChange={(e) => {
-                    setPrompt(e.target.value)
-                  }} className='p-2 w-full' placeholder="Ask for changes or improvements..."></textarea>
-                  <button onClick={async () => {
-                    if (!userPrompt.trim()) return;
-                    
-                    try {
-                      setError(null);
-                      const newMessage = {
-                        role: "user" as "user",
-                        content: userPrompt
-                      };
+      {/* Left Panel */}
+      <div className="w-80 border-r border-gray-800">
+        {activeView === 'chat' && (
+          <ChatPanel 
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isLoading={loading}
+          />
+        )}
+        {activeView === 'files' && (
+          <ModernFileExplorer 
+            files={files} 
+            onFileSelect={setSelectedFile}
+            selectedFile={selectedFile}
+          />
+        )}
+        {activeView === 'terminal' && (
+          <StepsPanel
+            steps={steps}
+            currentStep={currentStep}
+            onStepClick={setCurrentStep}
+          />
+        )}
+      </div>
 
-                      setLoading(true);
-                      console.log('Sending follow-up message:', newMessage);
-                      
-                      const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
-                        messages: [...llmMessages, newMessage]
-                      });
-                      
-                      console.log('Follow-up response:', stepsResponse.data);
-                      setLoading(false);
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Tab Bar */}
+        <div className="border-b border-gray-800 px-4 py-2 flex space-x-1">
+          <button
+            onClick={() => setActiveTab('code')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'code'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            }`}
+          >
+            <Code className="w-4 h-4" />
+            <span>Code</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'preview'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            <span>Preview</span>
+          </button>
+        </div>
 
-                      setLlmMessages(x => [...x, newMessage]);
-                      setLlmMessages(x => [...x, {
-                        role: "assistant",
-                        content: stepsResponse.data.response
-                      }]);
-                      
-                      const newSteps = parseXml(stepsResponse.data.response);
-                      setSteps(s => [...s, ...newSteps.map(x => ({
-                        ...x,
-                        status: "pending" as "pending"
-                      }))]);
-                      
-                      setPrompt(''); // Clear the input
-                    } catch (error) {
-                      console.error('Error sending message:', error);
-                      setError(error instanceof Error ? error.message : 'An error occurred');
-                      setLoading(false);
-                    }
-                  }} className='bg-purple-400 px-4'>Send</button>
-                  </div>}
-                </div>
-                {error && (
-                  <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
-                    Error: {error}
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Content */}
+        <div className="flex-1">
+          {activeTab === 'code' ? (
+            <ModernCodeEditor file={selectedFile} />
+          ) : (
+            <ModernPreview webContainer={webcontainer} files={files} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Keep the existing message sending logic
+async function sendFollowUpMessage(
+  userPrompt: string,
+  llmMessages: any[],
+  setLoading: (loading: boolean) => void,
+  setError: (error: string | null) => void,
+  setLlmMessages: (fn: (prev: any[]) => any[]) => void,
+  setSteps: (fn: (prev: Step[]) => Step[]) => void,
+  setMessages: (fn: (prev: Message[]) => Message[]) => void
+) {
+  if (!userPrompt.trim()) return;
+  
+  try {
+    setError(null);
+    const newMessage = {
+      role: "user" as "user",
+      content: userPrompt
+    };
+
+    setLoading(true);
+    console.log('Sending follow-up message:', newMessage);
+    
+    const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
+      messages: [...llmMessages, newMessage]
+    });
+    
+    console.log('Follow-up response:', stepsResponse.data);
+    setLoading(false);
+
+    setLlmMessages(x => [...x, newMessage]);
+    setLlmMessages(x => [...x, {
+      role: "assistant",
+      content: stepsResponse.data.response
+    }]);
+    
+    const newSteps = parseXml(stepsResponse.data.response);
+    setSteps(s => [...s, ...newSteps.map(x => ({
+      ...x,
+      status: "pending" as "pending"
+    }))]);
+    
+    // Add AI response to messages
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: 'I\'ve updated your project with the requested changes.',
+      timestamp: new Date()
+    }]);
+    
+  } catch (error) {
+    console.error('Error sending message:', error);
+    setError(error instanceof Error ? error.message : 'An error occurred');
+    setLoading(false);
+  }
+}
           </div>
           <div className="col-span-1">
               <FileExplorer 
